@@ -73,7 +73,7 @@ with gr.Blocks() as demo:
     with gr.Tab("Gemini Pro"):
         gr.load('gemini-pro', src=langchain_gradio.registry)
     with gr.Tab("Hugging Face"):
-        gr.load('hf-microsoft/DialoGPT-medium', src=langchain_gradio.registry)
+        gr.load('microsoft/phi-2', src=langchain_gradio.registry)
 
 demo.launch()
 ```
@@ -89,7 +89,7 @@ This integration supports various models through LangChain:
 - OpenAI models (e.g., 'gpt-3.5-turbo', 'gpt-4')
 - Anthropic models (e.g., 'claude-2')
 - Google AI models (e.g., 'gemini-pro')
-- Hugging Face models (prefix with 'hf-', e.g., 'hf-microsoft/DialoGPT-medium')
+- Hugging Face models (e.g., 'microsoft/phi-2', 'meta-llama/Llama-2-7b-chat-hf')
 
 For a comprehensive list of available models and their specifications, please refer to the documentation of each provider.
 
@@ -105,11 +105,11 @@ gr.load(
 )
 ```
 
-For Hugging Face models, use the 'hf-' prefix and set the HUGGINGFACEHUB_API_TOKEN environment variable or pass it as the token parameter:
+For Hugging Face models, set the HUGGINGFACEHUB_API_TOKEN environment variable or pass it as the token parameter:
 
 ```py
 gr.load(
-    name='hf-microsoft/DialoGPT-medium',
+    name='microsoft/phi-2',
     src=langchain_gradio.registry,
     token='your-huggingface-api-token-here'
 )
