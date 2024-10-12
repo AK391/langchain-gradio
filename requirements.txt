@@ -1,2 +1,8 @@
 openai
-gradio==5.0.0b5
+gradio==5.0.2
+langchain
+langchain-openai
+langchain-anthropic
+langchain-google-genai
+langchain-huggingface
+

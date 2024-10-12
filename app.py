@@ -1,7 +1,7 @@
 import gradio as gr
-import openai_gradio
+import langchain_gradio
 
 gr.load(
     name='gpt-4-turbo',
-    src=openai_gradio.registry,
+    src=langchain_gradio.registry,
 ).launch()
