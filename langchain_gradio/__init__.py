@@ -6,9 +6,8 @@ from langchain_huggingface import HuggingFacePipeline, HuggingFaceEndpoint, Chat
 from langchain.schema import HumanMessage, AIMessage
 from langchain.chat_models.base import BaseChatModel
 from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationChain
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from langchain.chains import LLMChain
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 import gradio as gr
 from typing import Callable, Dict, Any
 
@@ -48,49 +47,35 @@ def get_chat_model(model_name: str, api_key: str | None = None) -> BaseChatModel
         raise ValueError(f"Unsupported model: {model_name}")
 
 
-def get_fn(model_name: str, preprocess: Callable, postprocess: Callable, api_key: str):
+def get_fn(model_name: str, api_key: str):
     chat = get_chat_model(model_name, api_key)
     memory = ConversationBufferMemory(return_messages=True)
     
+    system_message = SystemMessagePromptTemplate.from_template(
+        "You are a helpful AI assistant. Always provide your thought process step-by-step before giving your final answer."
+    )
+    human_message = HumanMessagePromptTemplate.from_template("{input}")
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful AI assistant."),
+        system_message,
         MessagesPlaceholder(variable_name="history"),
-        ("human", "{input}")
+        human_message
     ])
     
-    conversation = ConversationChain(
+    chain = LLMChain(
         llm=chat,
-        memory=memory,
         prompt=prompt,
+        memory=memory,
         verbose=True
     )
 
     def fn(message, history):
-        inputs = preprocess(message, history)
-        response = conversation.predict(input=inputs["user_message"])
-        yield postprocess(response)
+        full_response = ""
+        for chunk in chain.stream({"input": message}):
+            if "text" in chunk:
+                full_response += chunk["text"]
+                yield full_response
 
     return fn
-
-
-def get_interface_args(pipeline):
-    if pipeline == "chat":
-        inputs = None
-        outputs = None
-
-        def preprocess(message, history):
-            return {"user_message": message}
-
-        postprocess = lambda x: x  # No post-processing needed
-    else:
-        # Add other pipeline types when they will be needed
-        raise ValueError(f"Unsupported pipeline type: {pipeline}")
-    return inputs, outputs, preprocess, postprocess
-
-
-def get_pipeline(model_name):
-    # For now, all supported models are chat models
-    return "chat"
 
 
 def registry(name: str, token: str | None = None, **kwargs):
@@ -112,34 +97,30 @@ def registry(name: str, token: str | None = None, **kwargs):
     else:
         raise ValueError(f"Unsupported model: {name}")
 
-    api_key = None
-    if env_var_name:
-        api_key = token or os.environ.get(env_var_name)
-        if not api_key and "/" not in name:
-            raise ValueError(
-                f"API key for {name} is not set. "
-                f"Please set the {env_var_name} environment variable "
-                f"or provide the token parameter."
-            )
-
-    pipeline = get_pipeline(name)
-    inputs, outputs, preprocess, postprocess = get_interface_args(pipeline)
-    fn = get_fn(name, preprocess, postprocess, api_key)
-
-    if pipeline == "chat":
-        interface = gr.ChatInterface(
-            fn=fn,
-            chatbot=gr.Chatbot(height=600),
-            textbox=gr.Textbox(placeholder="Type your message here...", container=False, scale=7),
-            title=f"Chat with {name}",
-            description="This is a chatbot powered by LangChain and various AI models.",
-            theme="soft",
-            examples=["Tell me a joke", "Explain quantum computing", "What's the weather like today?"],
-            cache_examples=True,
-            **kwargs
+    api_key = token or os.environ.get(env_var_name)
+    if not api_key and "/" not in name:
+        raise ValueError(
+            f"API key for {name} is not set. "
+            f"Please set the {env_var_name} environment variable "
+            f"or provide the token parameter."
         )
-    else:
-        # For other pipelines, create a standard Interface (not implemented yet)
-        interface = gr.Interface(fn=fn, inputs=inputs, outputs=outputs, **kwargs)
+
+    fn = get_fn(name, api_key)
+
+    interface = gr.ChatInterface(
+        fn=fn,
+        chatbot=gr.Chatbot(height=600),
+        textbox=gr.Textbox(placeholder="Type your message here...", container=False, scale=7),
+        title=f"Chat with {name} (powered by LangChain)",
+        description="This chatbot uses LangChain to maintain context and provide step-by-step reasoning.",
+        theme="soft",
+        examples=[
+            "Explain the concept of quantum entanglement",
+            "What are the main differences between renewable and non-renewable energy sources?",
+            "How does the process of photosynthesis work?"
+        ],
+        cache_examples=True,
+        **kwargs
+    )
 
     return interface
