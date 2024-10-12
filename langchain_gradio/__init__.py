@@ -7,6 +7,8 @@ from langchain.schema import HumanMessage, AIMessage
 from langchain.chat_models.base import BaseChatModel
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 import gradio as gr
 from typing import Callable, Dict, Any
 
@@ -48,8 +50,20 @@ def get_chat_model(model_name: str, api_key: str | None = None) -> BaseChatModel
 
 def get_fn(model_name: str, preprocess: Callable, postprocess: Callable, api_key: str):
     chat = get_chat_model(model_name, api_key)
-    memory = ConversationBufferMemory()
-    conversation = ConversationChain(llm=chat, memory=memory, verbose=True)
+    memory = ConversationBufferMemory(return_messages=True)
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are a helpful AI assistant."),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{input}")
+    ])
+    
+    conversation = ConversationChain(
+        llm=chat,
+        memory=memory,
+        prompt=prompt,
+        verbose=True
+    )
 
     def fn(message, history):
         inputs = preprocess(message, history)
@@ -113,7 +127,17 @@ def registry(name: str, token: str | None = None, **kwargs):
     fn = get_fn(name, preprocess, postprocess, api_key)
 
     if pipeline == "chat":
-        interface = gr.ChatInterface(fn=fn, **kwargs)
+        interface = gr.ChatInterface(
+            fn=fn,
+            chatbot=gr.Chatbot(height=600),
+            textbox=gr.Textbox(placeholder="Type your message here...", container=False, scale=7),
+            title=f"Chat with {name}",
+            description="This is a chatbot powered by LangChain and various AI models.",
+            theme="soft",
+            examples=["Tell me a joke", "Explain quantum computing", "What's the weather like today?"],
+            cache_examples=True,
+            **kwargs
+        )
     else:
         # For other pipelines, create a standard Interface (not implemented yet)
         interface = gr.Interface(fn=fn, inputs=inputs, outputs=outputs, **kwargs)

@@ -10,3 +10,4 @@ env/
 dist/
 build/
 *.egg-info/
+.gradio/cached_examples/
