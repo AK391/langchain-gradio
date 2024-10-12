@@ -10,7 +10,7 @@ from langchain.chains import ConversationChain
 import gradio as gr
 from typing import Callable, Dict, Any
 
-__version__ = "0.0.5"
+__version__ = "0.0.1"
 
 
 def get_chat_model(model_name: str, api_key: str | None = None) -> BaseChatModel:
@@ -20,12 +20,11 @@ def get_chat_model(model_name: str, api_key: str | None = None) -> BaseChatModel
         return ChatAnthropic(model=model_name, anthropic_api_key=api_key, streaming=True)
     elif model_name.startswith("gemini-"):
         return ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, streaming=True)
-    elif model_name.startswith("hf-"):
-        hf_model_name = model_name[3:]
+    elif "/" in model_name:
         if api_key:
             # Use HuggingFaceEndpoint for models that require API access
             llm = HuggingFaceEndpoint(
-                repo_id=hf_model_name,
+                repo_id=model_name,
                 task="text-generation",
                 max_new_tokens=100,
                 do_sample=False,
@@ -35,7 +34,7 @@ def get_chat_model(model_name: str, api_key: str | None = None) -> BaseChatModel
         else:
             # Use HuggingFacePipeline for local models
             return HuggingFacePipeline.from_model_id(
-                model_id=hf_model_name,
+                model_id=model_name,
                 task="text-generation",
                 pipeline_kwargs={
                     "max_new_tokens": 100,
@@ -85,7 +84,7 @@ def registry(name: str, token: str | None = None, **kwargs):
     Create a Gradio Interface for a supported LangChain chat model.
 
     Parameters:
-        - name (str): The name of the model (e.g., "gpt-3.5-turbo", "gpt-4", "claude-2", "gemini-pro", "hf-microsoft/phi-2").
+        - name (str): The name of the model (e.g., "gpt-3.5-turbo", "gpt-4", "claude-2", "gemini-pro", "microsoft/phi-2").
         - token (str, optional): The API key for the model provider. For Hugging Face models, this is optional and only needed for accessing gated or private models.
     """
     if name.startswith("gpt-"):
@@ -94,7 +93,7 @@ def registry(name: str, token: str | None = None, **kwargs):
         env_var_name = "ANTHROPIC_API_KEY"
     elif name.startswith("gemini-"):
         env_var_name = "GOOGLE_API_KEY"
-    elif name.startswith("hf-"):
+    elif "/" in name:
         env_var_name = "HUGGINGFACEHUB_API_TOKEN"
     else:
         raise ValueError(f"Unsupported model: {name}")
@@ -102,7 +101,7 @@ def registry(name: str, token: str | None = None, **kwargs):
     api_key = None
     if env_var_name:
         api_key = token or os.environ.get(env_var_name)
-        if not api_key and not name.startswith("hf-"):
+        if not api_key and "/" not in name:
             raise ValueError(
                 f"API key for {name} is not set. "
                 f"Please set the {env_var_name} environment variable "
