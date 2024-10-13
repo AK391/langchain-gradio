@@ -4,13 +4,24 @@ is a Python package that makes it very easy for developers to create machine lea
 
 # Installation
 
-You can install `langchain-gradio` directly using pip:
+To install and set up `langchain-gradio`, follow these steps:
 
+1. Clone this repo:
 ```bash
-pip install langchain-gradio
+git clone https://github.com/AK391/langchain-gradio.git
 ```
 
-That's it! 
+2. Navigate into the folder that you cloned this repo into:
+```bash
+cd langchain-gradio
+```
+
+3. Install this package:
+```bash
+pip install -e .
+```
+
+That's it! You're now ready to use `langchain-gradio`.
 
 # Basic Usage
 
