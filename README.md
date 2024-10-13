@@ -41,7 +41,7 @@ import gradio as gr
 import langchain_gradio
 
 gr.load(
-    name='gpt-3.5-turbo',
+    name='gpt-4-turbo',
     src=langchain_gradio.registry,
 ).launch()
 ```
@@ -54,15 +54,15 @@ Run the Python file, and you should see a Gradio Interface connected to the spec
 
 Once you can create a Gradio UI from a language model endpoint, you can customize it by setting any arguments to `gr.ChatInterface`. For example:
 
-```py
+```python
 import gradio as gr
 import langchain_gradio
 
 gr.load(
-    name='gpt-3.5-turbo',
+    name='gpt-4-turbo',
     src=langchain_gradio.registry,
     title='LangChain-Gradio Integration',
-    description="Chat with GPT-3.5-turbo model.",
+    description="Chat with gpt-4-turbo model.",
     examples=["Explain quantum gravity to a 5-year old.", "How many R are there in the word Strawberry?"]
 ).launch()
 ```
@@ -79,12 +79,12 @@ import langchain_gradio
 with gr.Blocks() as demo:
     with gr.Tab("GPT-3.5-turbo"):
         gr.load('gpt-3.5-turbo', src=langchain_gradio.registry)
-    with gr.Tab("Claude-2"):
-        gr.load('claude-2', src=langchain_gradio.registry)
-    with gr.Tab("Gemini Pro"):
-        gr.load('gemini-pro', src=langchain_gradio.registry)
+    with gr.Tab("Claude-3"):
+        gr.load('claude-3-5-sonnet-20240620', src=langchain_gradio.registry)
+    with gr.Tab("gemini-1.5-pro-002"):
+        gr.load('gemini-1.5-pro-002', src=langchain_gradio.registry)
     with gr.Tab("Hugging Face"):
-        gr.load('microsoft/phi-2', src=langchain_gradio.registry)
+        gr.load('Qwen/Qwen2.5-72B-Instruct', src=langchain_gradio.registry)
 
 demo.launch()
 ```

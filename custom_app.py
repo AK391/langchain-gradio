@@ -1,8 +1,9 @@
 import gradio as gr
-from langchain_gradio import registry
+import langchain_gradio
 
-registry(
+gr.load(
     name='gpt-4-turbo',
+    src=langchain_gradio.registry,
     title='LangChain-Gradio Integration',
     description="Chat with gpt-4-turbo model.",
     examples=["Explain quantum gravity to a 5-year old.", "How many R are there in the word Strawberry?"]
