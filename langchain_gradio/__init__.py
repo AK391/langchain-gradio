@@ -1,15 +1,14 @@
 import os
+import gradio as gr
+from typing import Callable
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFacePipeline, HuggingFaceEndpoint, ChatHuggingFace
 from langchain.schema import HumanMessage, AIMessage
 from langchain.chat_models.base import BaseChatModel
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import LLMChain
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder, SystemMessagePromptTemplate, HumanMessagePromptTemplate
-import gradio as gr
-from typing import Callable, Dict, Any
+from langchain_community.llms import HuggingFaceHub
+from langchain_core.messages import HumanMessage, AIMessage
 
 __version__ = "0.0.1"
 
@@ -23,68 +22,88 @@ def get_chat_model(model_name: str, api_key: str | None = None) -> BaseChatModel
         return ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, streaming=True)
     elif "/" in model_name:
         if api_key:
-            # Use HuggingFaceEndpoint for models that require API access
-            llm = HuggingFaceEndpoint(
+            llm = HuggingFaceHub(
                 repo_id=model_name,
                 task="text-generation",
-                max_new_tokens=100,
-                do_sample=False,
+                model_kwargs={"max_new_tokens": 100, "do_sample": False},
                 huggingfacehub_api_token=api_key
             )
             return ChatHuggingFace(llm=llm)
         else:
-            # Use HuggingFacePipeline for local models
             return HuggingFacePipeline.from_model_id(
                 model_id=model_name,
                 task="text-generation",
-                pipeline_kwargs={
-                    "max_new_tokens": 100,
-                    "top_k": 50,
-                    "temperature": 0.7,
-                },
+                pipeline_kwargs={"max_new_tokens": 100, "top_k": 50, "temperature": 0.7},
             )
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 
 
-def get_fn(model_name: str, api_key: str):
-    chat = get_chat_model(model_name, api_key)
-    memory = ConversationBufferMemory(return_messages=True)
-    
-    system_message = SystemMessagePromptTemplate.from_template(
-        "You are a helpful AI assistant. Always provide your thought process step-by-step before giving your final answer."
-    )
-    human_message = HumanMessagePromptTemplate.from_template("{input}")
-    prompt = ChatPromptTemplate.from_messages([
-        system_message,
-        MessagesPlaceholder(variable_name="history"),
-        human_message
-    ])
-    
-    chain = LLMChain(
-        llm=chat,
-        prompt=prompt,
-        memory=memory,
-        verbose=True
-    )
+def get_interface_args(pipeline):
+    if pipeline == "chat":
+        inputs = None
+        outputs = None
 
+        def preprocess(message, history):
+            messages = []
+            for user_msg, assistant_msg in history:
+                messages.append({"role": "user", "content": user_msg})
+                messages.append({"role": "assistant", "content": assistant_msg})
+            messages.append({"role": "user", "content": message})
+            return {"messages": messages}
+
+        postprocess = lambda x: x  # No post-processing needed
+    else:
+        raise ValueError(f"Unsupported pipeline type: {pipeline}")
+    
+    return inputs, outputs, preprocess, postprocess
+
+
+def get_pipeline(model_name):
+    # For now, assume all models are chat models
+    return "chat"
+
+
+def get_fn(model_name: str, preprocess: Callable, postprocess: Callable, api_key: str):
+    chat = get_chat_model(model_name, api_key)
+    
     def fn(message, history):
-        full_response = ""
-        for chunk in chain.stream({"input": message}):
-            if "text" in chunk:
-                full_response += chunk["text"]
-                yield full_response
+        inputs = preprocess(message, history)
+        
+        # Convert dict messages to langchain Message objects
+        messages = []
+        for msg in inputs["messages"]:
+            if isinstance(msg, dict):
+                if msg["role"] == "user":
+                    messages.append(HumanMessage(content=msg["content"]))
+                elif msg["role"] == "assistant":
+                    messages.append(AIMessage(content=msg["content"]))
+            else:
+                messages.append(msg)
+        
+        response = chat.predict_messages(messages)
+        print(f"Raw response: {response}")  # Debug print
+        
+        if isinstance(response, str):
+            yield postprocess(response)
+        elif hasattr(response, 'content'):
+            yield postprocess(response.content)
+        elif isinstance(response, dict) and 'content' in response:
+            yield postprocess(response['content'])
+        else:
+            print(f"Unexpected response type: {type(response)}")
+            yield postprocess(str(response))
 
     return fn
 
 
 def registry(name: str, token: str | None = None, **kwargs):
     """
-    Create a Gradio Interface for a supported LangChain chat model.
+    Create a Gradio Interface for a chat model.
 
     Parameters:
-        - name (str): The name of the model (e.g., "gpt-3.5-turbo", "gpt-4", "claude-2", "gemini-pro", "microsoft/phi-2").
-        - token (str, optional): The API key for the model provider. For Hugging Face models, this is optional and only needed for accessing gated or private models.
+        - name (str): The name of the chat model.
+        - token (str, optional): The API key for the model.
     """
     if name.startswith("gpt-"):
         env_var_name = "OPENAI_API_KEY"
@@ -105,22 +124,14 @@ def registry(name: str, token: str | None = None, **kwargs):
             f"or provide the token parameter."
         )
 
-    fn = get_fn(name, api_key)
+    pipeline = get_pipeline(name)
+    inputs, outputs, preprocess, postprocess = get_interface_args(pipeline)
+    fn = get_fn(name, preprocess, postprocess, api_key)
 
-    interface = gr.ChatInterface(
-        fn=fn,
-        chatbot=gr.Chatbot(height=600),
-        textbox=gr.Textbox(placeholder="Type your message here...", container=False, scale=7),
-        title=f"Chat with {name} (powered by LangChain)",
-        description="This chatbot uses LangChain to maintain context and provide step-by-step reasoning.",
-        theme="soft",
-        examples=[
-            "Explain the concept of quantum entanglement",
-            "What are the main differences between renewable and non-renewable energy sources?",
-            "How does the process of photosynthesis work?"
-        ],
-        cache_examples=True,
-        **kwargs
-    )
+    if pipeline == "chat":
+        interface = gr.ChatInterface(fn=fn, **kwargs)
+    else:
+        # For other pipelines, create a standard Interface (not implemented yet)
+        interface = gr.Interface(fn=fn, inputs=inputs, outputs=outputs, **kwargs)
 
     return interface
