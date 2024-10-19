@@ -9,6 +9,9 @@ from langchain.schema import HumanMessage, AIMessage
 from langchain.chat_models.base import BaseChatModel
 from langchain_community.llms import HuggingFaceHub
 from langchain_core.messages import HumanMessage, AIMessage
+from langchain.chains import LLMChain, ConversationChain
+from langchain.prompts import PromptTemplate
+from langchain.memory import ConversationBufferMemory
 
 __version__ = "0.0.1"
 
@@ -39,20 +42,21 @@ def get_chat_model(model_name: str, api_key: str | None = None) -> BaseChatModel
         raise ValueError(f"Unsupported model: {model_name}")
 
 
+def get_chain(model_name: str, api_key: str | None = None) -> ConversationChain:
+    llm = get_chat_model(model_name, api_key)
+    memory = ConversationBufferMemory(return_messages=True)
+    return ConversationChain(llm=llm, memory=memory, verbose=True)
+
+
 def get_interface_args(pipeline):
     if pipeline == "chat":
         inputs = None
         outputs = None
 
         def preprocess(message, history):
-            messages = []
-            for user_msg, assistant_msg in history:
-                messages.append({"role": "user", "content": user_msg})
-                messages.append({"role": "assistant", "content": assistant_msg})
-            messages.append({"role": "user", "content": message})
-            return {"messages": messages}
+            return {"input": message}
 
-        postprocess = lambda x: x  # No post-processing needed
+        postprocess = lambda x: x["response"]
     else:
         raise ValueError(f"Unsupported pipeline type: {pipeline}")
     
@@ -65,34 +69,12 @@ def get_pipeline(model_name):
 
 
 def get_fn(model_name: str, preprocess: Callable, postprocess: Callable, api_key: str):
-    chat = get_chat_model(model_name, api_key)
+    chain = get_chain(model_name, api_key)
     
     def fn(message, history):
         inputs = preprocess(message, history)
-        
-        # Convert dict messages to langchain Message objects
-        messages = []
-        for msg in inputs["messages"]:
-            if isinstance(msg, dict):
-                if msg["role"] == "user":
-                    messages.append(HumanMessage(content=msg["content"]))
-                elif msg["role"] == "assistant":
-                    messages.append(AIMessage(content=msg["content"]))
-            else:
-                messages.append(msg)
-        
-        response = chat.predict_messages(messages)
-        print(f"Raw response: {response}")  # Debug print
-        
-        if isinstance(response, str):
-            yield postprocess(response)
-        elif hasattr(response, 'content'):
-            yield postprocess(response.content)
-        elif isinstance(response, dict) and 'content' in response:
-            yield postprocess(response['content'])
-        else:
-            print(f"Unexpected response type: {type(response)}")
-            yield postprocess(str(response))
+        response = chain(inputs)
+        yield postprocess(response)
 
     return fn
 
